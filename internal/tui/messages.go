@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"time"
-
 	"github.com/TaliaMarine/helm-charts-tui/internal/helm"
 )
 
@@ -38,5 +36,3 @@ type repoAddErrMsg struct {
 // clearStatusMsg clears the transient status message.
 type clearStatusMsg struct{}
 
-// tickMsg is used for timed events.
-type tickMsg time.Time

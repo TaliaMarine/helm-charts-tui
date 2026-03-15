@@ -148,7 +148,7 @@ func (m Model) renderHelpOverlay() string {
 	bindings := helpBindings()
 	for _, binding := range bindings {
 		help := binding.Help()
-		b.WriteString(fmt.Sprintf("  %-12s %s\n", help.Key, help.Desc))
+		fmt.Fprintf(&b, "  %-12s %s\n", help.Key, help.Desc)
 	}
 
 	return dialogStyle.Render(b.String())
