@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/TaliaMarine/helm-charts-tui/compare/v1.0.0...v1.0.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* ci fixes ([19ddd7f](https://github.com/TaliaMarine/helm-charts-tui/commit/19ddd7f5e543da14e0ca12757995468780d27268))
+* ci test only ubuntu ([fc83d6b](https://github.com/TaliaMarine/helm-charts-tui/commit/fc83d6b88e0ce202c9200f600fd823230aec6b7c))
+
 ## 1.0.0 (2026-03-15)
 
 
