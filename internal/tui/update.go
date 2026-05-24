@@ -171,6 +171,7 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 		m.filteredCharts = nil
 		m.filterText = ""
 		m.err = nil
+		m.rebuildRepoTable()
 		return m, nil
 	case ScreenChartVersions:
 		m.screen = ScreenChartList
@@ -178,11 +179,14 @@ func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 		m.filteredVersions = nil
 		m.filterText = ""
 		m.err = nil
+		m.rebuildChartTable()
 		return m, nil
 	case ScreenChartDetail:
 		m.screen = ScreenChartVersions
 		m.detail = ""
+		m.filterText = ""
 		m.err = nil
+		m.rebuildVersionTable()
 		return m, nil
 	}
 
@@ -235,6 +239,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.selectedVersion = ver
 			m.screen = ScreenChartDetail
 			m.loading = true
+			m.filterText = ""
 			m.err = nil
 			return m, m.loadDetail(ver.Name, ver.Version)
 		}

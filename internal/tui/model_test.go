@@ -447,6 +447,77 @@ func TestFilterNotAvailableOnDetailScreen(t *testing.T) {
 	}
 }
 
+func TestChartReloadedOnReselect(t *testing.T) {
+	m := testModel()
+	m, _ = toModel(m.Update(reposLoadedMsg([]helm.Repo{
+		{Name: "stable", URL: "https://charts.helm.sh/stable"},
+	})))
+
+	// Navigate to chart list
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyDown}))
+	m, cmd := toModel(m.Update(tea.KeyMsg{Type: tea.KeyEnter}))
+	m, _ = runCmd(m, cmd)
+
+	if len(m.Charts()) != 2 {
+		t.Fatalf("charts = %d, want 2", len(m.Charts()))
+	}
+
+	// Go back
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyEscape}))
+	if m.CurrentScreen() != ScreenRepoList {
+		t.Fatalf("screen = %d, want ScreenRepoList", m.CurrentScreen())
+	}
+
+	// Re-select the same repo
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyDown}))
+	m, cmd = toModel(m.Update(tea.KeyMsg{Type: tea.KeyEnter}))
+	if m.CurrentScreen() != ScreenChartList {
+		t.Fatalf("screen = %d, want ScreenChartList", m.CurrentScreen())
+	}
+	if !m.IsLoading() {
+		t.Error("should be loading charts on re-select")
+	}
+
+	// Load charts
+	m, _ = runCmd(m, cmd)
+	if len(m.Charts()) != 2 {
+		t.Errorf("charts after re-select = %d, want 2", len(m.Charts()))
+	}
+}
+
+func TestBackNavigationClearsFilter(t *testing.T) {
+	m := testModel()
+	m, _ = toModel(m.Update(reposLoadedMsg([]helm.Repo{
+		{Name: "stable", URL: "https://charts.helm.sh/stable"},
+		{Name: "bitnami", URL: "https://charts.bitnami.com/bitnami"},
+	})))
+
+	// Apply a filter on repo list
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}}))
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}}))
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}))
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}))
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyEnter}))
+
+	if len(m.filteredRepos) != 1 {
+		t.Fatalf("filtered repos = %d, want 1", len(m.filteredRepos))
+	}
+
+	// Select filtered repo and drill in
+	m, cmd := toModel(m.Update(tea.KeyMsg{Type: tea.KeyDown}))
+	m, cmd = toModel(m.Update(tea.KeyMsg{Type: tea.KeyEnter}))
+	m, _ = runCmd(m, cmd)
+
+	// Go back — filter should be cleared and all repos visible
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyEscape}))
+	if m.FilterText() != "" {
+		t.Errorf("filter text = %q, want empty after back", m.FilterText())
+	}
+	if len(m.filteredRepos) != 2 {
+		t.Errorf("filtered repos after back = %d, want 2 (all repos)", len(m.filteredRepos))
+	}
+}
+
 func TestTabSwitchesInputInAddRepo(t *testing.T) {
 	m := testModel()
 	m, _ = toModel(m.Update(reposLoadedMsg([]helm.Repo{})))

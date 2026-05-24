@@ -1,6 +1,87 @@
 ---
-description: 'Instructions for writing Go CLI & TUI applications with idiomatic Go and usability best practices'
+description: 'Project-specific guidance for helm-charts-tui, plus generic Go CLI/TUI style instructions'
 applyTo: '**/*.go,**/go.mod,**/go.sum'
+---
+
+# helm-charts-tui — Project Instructions for Claude
+
+## Project Overview
+
+A Bubble Tea TUI for browsing Helm chart repositories. Users drill into repos → charts → versions → detail (YAML). See `SPECS.md` for the full behavioral specification and `DEVELOPERS.md` for architecture/build details.
+
+**Module**: `github.com/TaliaMarine/helm-charts-tui`  
+**Go version**: 1.26+  
+**Entry point**: `main.go` (signal-aware context, `--version` flag)  
+**Build**: `just build` / `just check` / `just test`
+
+---
+
+## Key Architectural Constraints
+
+1. **Single Model with Screen/Mode enums** — no nested Bubble Tea models. All state lives in `internal/tui/Model`. Screens: `ScreenRepoList → ScreenChartList → ScreenChartVersions → ScreenChartDetail`. Modes: `ModeNormal`, `ModeFilter`, `ModeAddRepo`, `ModeConfirmExit`, `ModeHelp`.
+
+2. **`helm.Executor` interface** — all helm CLI interaction goes through this interface (`internal/helm/executor.go`). Never call `exec.Command("helm", ...)` directly from the TUI package. Tests use `MockExecutor` with function fields.
+
+3. **Async data via `tea.Cmd`** — commands in `commands.go` return `tea.Cmd` closures. Data arrives as typed messages (e.g., `reposLoadedMsg`, `chartsLoadedMsg`). Tables are rebuilt when data messages arrive.
+
+4. **Filter text clears on every screen transition** (both forward and back). The table must always be rebuilt after clearing filter text so the full unfiltered data appears.
+
+5. **First row in repo table is synthetic "Add new repo"** — all cursor-to-data-index mappings in `handleEnter` must offset by 1.
+
+6. **`NO_COLOR` env var disables all styling** — styles are initialized once at package level using IIFE pattern in `styles.go`.
+
+---
+
+## Critical Invariants (things that have broken before)
+
+- When navigating back (Escape), clear `filterText` AND call the appropriate `rebuild*Table()` so the parent screen shows unfiltered data.
+- When navigating forward (Enter), clear `filterText` before switching screens.
+- Data (`charts`, `versions`, `detail`) is always re-fetched on forward navigation — never stale.
+- `q` must NOT quit when `mode != ModeNormal && mode != ModeHelp` (it types into inputs instead).
+- `Ctrl+C` always quits regardless of mode.
+
+---
+
+## Testing Approach
+
+- State-transition tests in `model_test.go`: create model with mock, send messages, assert screen/mode/data.
+- Use `testModel()` helper — it sets up a MockExecutor and simulates a `WindowSizeMsg`.
+- Use `runCmd(m, cmd)` to execute a `tea.Cmd` synchronously and feed the resulting message back.
+- Filter logic has its own unit tests in `filter_test.go`.
+- Helm JSON parsing has table-driven tests in `executor_test.go`.
+
+---
+
+## File Quick Reference
+
+| Path | Purpose |
+|------|---------|
+| `main.go` | Entry point, version flag, signal handling |
+| `internal/tui/model.go` | Model struct, Screen/Mode enums, New(), Init(), table rebuild |
+| `internal/tui/update.go` | Update() dispatch, key handling per mode/screen |
+| `internal/tui/view.go` | View() rendering, header, status bar, overlays |
+| `internal/tui/commands.go` | tea.Cmd factories for async helm calls |
+| `internal/tui/messages.go` | Custom tea.Msg types |
+| `internal/tui/keys.go` | Key binding map |
+| `internal/tui/styles.go` | Lipgloss styles with NO_COLOR support |
+| `internal/tui/filter.go` | FilterRepos(), FilterCharts() |
+| `internal/helm/types.go` | Repo, Chart structs |
+| `internal/helm/executor.go` | Executor interface + RealExecutor |
+| `internal/helm/mock.go` | MockExecutor for tests |
+| `SPECS.md` | Full behavioral specification |
+| `DEVELOPERS.md` | Architecture, build, test guide |
+| `Justfile` | Build recipes |
+
+---
+
+## When Making Changes
+
+- Read `SPECS.md` before implementing behavioral changes — it's the source of truth for UX.
+- Run `just check` (tidy + fmt + vet + test + build) before considering work done.
+- Add state-transition tests in `model_test.go` for any new screen/mode changes.
+- If adding a new screen: follow the checklist in `DEVELOPERS.md` § "Adding a New Screen".
+
+---
 ---
 
 # Go CLI & TUI Development Instructions

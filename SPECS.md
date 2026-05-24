@@ -134,7 +134,37 @@ This means going back from a filtered list always takes two `Esc` presses: first
 
 ---
 
-## 6. Helm CLI Commands Used
+## 6. Data Loading & State Lifecycle
+
+### Forward Navigation (Enter)
+
+Each drill-in always triggers a fresh async load from the helm CLI:
+
+- Repo List → Chart List: calls `SearchRepo("reponame/")`
+- Chart List → Chart Versions: calls `SearchRepoVersions("chartname")`
+- Chart Versions → Chart Detail: calls `ShowChart("chartname", "version")`
+
+Data is **never cached** between navigations — re-selecting the same item reloads it.
+
+### Back Navigation (Esc)
+
+When navigating back:
+
+- The child screen's data is cleared (set to nil/empty).
+- Filter text is cleared.
+- The parent screen's table is **rebuilt** from its existing data (with empty filter) to ensure the full unfiltered list is shown.
+- No new helm CLI call is made — the parent's data is still in memory.
+
+### Startup
+
+On init, two commands fire in parallel:
+
+1. `RepoList()` — populates the repo table.
+2. `SearchRepo("")` — counts charts per repo (non-fatal on error; shows "..." for counts).
+
+---
+
+## 7. Helm CLI Commands Used
 
 All commands are executed via `exec.CommandContext` with `context.Context` for cancellation. Arguments are always passed as separate args (never shell string concatenation).
 
@@ -149,7 +179,7 @@ All commands are executed via `exec.CommandContext` with `context.Context` for c
 
 ---
 
-## 7. Build & Distribution
+## 8. Build & Distribution
 
 - Installable via `go install github.com/TaliaMarine/helm-charts-tui@latest`
 - Buildable via `go build .` (or `just build` which outputs to `bin/`)
@@ -158,7 +188,7 @@ All commands are executed via `exec.CommandContext` with `context.Context` for c
 
 ---
 
-## 8. Implementation Constraints
+## 9. Implementation Constraints
 
 - **Go 1.26+**
 - **Bubble Tea** (`charmbracelet/bubbletea`) with a single `Model` and `Screen` enum -- not nested models
