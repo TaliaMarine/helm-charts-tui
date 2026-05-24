@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/TaliaMarine/helm-charts-tui/compare/v1.0.1...v1.1.0) (2026-05-24)
+
+
+### Features
+
+* run helm repo update in background on startup and refresh list ([f14b1b9](https://github.com/TaliaMarine/helm-charts-tui/commit/f14b1b9d46f8b36daec26b460ba34e642c51ca80))
+
 ## [1.0.1](https://github.com/TaliaMarine/helm-charts-tui/compare/v1.0.0...v1.0.1) (2026-03-15)
 
 
