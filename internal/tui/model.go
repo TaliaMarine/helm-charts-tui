@@ -130,11 +130,12 @@ func newTable() table.Model {
 	return t
 }
 
-// Init starts loading repos.
+// Init starts loading repos and kicks off a background repo update.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.loadRepos(),
 		m.loadChartCounts(),
+		m.repoUpdateAll(),
 	)
 }
 

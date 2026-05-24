@@ -7,6 +7,7 @@ type MockExecutor struct {
 	RepoListFunc           func(ctx context.Context) ([]Repo, error)
 	RepoAddFunc            func(ctx context.Context, name, url string) error
 	RepoUpdateFunc         func(ctx context.Context, name string) error
+	RepoUpdateAllFunc      func(ctx context.Context) error
 	SearchRepoFunc         func(ctx context.Context, keyword string) ([]Chart, error)
 	SearchRepoVersionsFunc func(ctx context.Context, keyword string) ([]Chart, error)
 	ShowChartFunc          func(ctx context.Context, chartName, version string) (string, error)
@@ -29,6 +30,13 @@ func (m *MockExecutor) RepoAdd(ctx context.Context, name, url string) error {
 func (m *MockExecutor) RepoUpdate(ctx context.Context, name string) error {
 	if m.RepoUpdateFunc != nil {
 		return m.RepoUpdateFunc(ctx, name)
+	}
+	return nil
+}
+
+func (m *MockExecutor) RepoUpdateAll(ctx context.Context) error {
+	if m.RepoUpdateAllFunc != nil {
+		return m.RepoUpdateAllFunc(ctx)
 	}
 	return nil
 }

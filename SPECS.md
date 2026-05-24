@@ -157,10 +157,11 @@ When navigating back:
 
 ### Startup
 
-On init, two commands fire in parallel:
+On init, three commands fire in parallel:
 
 1. `RepoList()` — populates the repo table.
 2. `SearchRepo("")` — counts charts per repo (non-fatal on error; shows "..." for counts).
+3. `RepoUpdateAll()` — runs `helm repo update` in the background. When it completes, the repo list and chart counts are automatically refreshed so newly available charts appear without manual intervention. Errors are silently ignored (the user still sees whatever was cached).
 
 ---
 
@@ -168,14 +169,15 @@ On init, two commands fire in parallel:
 
 All commands are executed via `exec.CommandContext` with `context.Context` for cancellation. Arguments are always passed as separate args (never shell string concatenation).
 
-| Operation       | Command                                            |
-|-----------------|----------------------------------------------------|
-| List repos      | `helm repo list --output json`                     |
-| Add repo        | `helm repo add NAME URL`                           |
-| Update repo     | `helm repo update NAME`                            |
-| Search charts   | `helm search repo KEYWORD --output json`           |
-| Search versions | `helm search repo KEYWORD --versions --output json`|
-| Show chart      | `helm show chart CHARTNAME --version VERSION`      |
+| Operation        | Command                                            |
+|------------------|----------------------------------------------------|
+| List repos       | `helm repo list --output json`                     |
+| Add repo         | `helm repo add NAME URL`                           |
+| Update repo      | `helm repo update NAME`                            |
+| Update all repos | `helm repo update`                                 |
+| Search charts    | `helm search repo KEYWORD --output json`           |
+| Search versions  | `helm search repo KEYWORD --versions --output json`|
+| Show chart       | `helm show chart CHARTNAME --version VERSION`      |
 
 ---
 

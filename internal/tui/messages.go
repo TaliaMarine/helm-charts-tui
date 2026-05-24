@@ -33,6 +33,9 @@ type repoAddErrMsg struct {
 	err error
 }
 
+// repoUpdateAllDoneMsg signals that background repo update completed.
+type repoUpdateAllDoneMsg struct{}
+
 // clearStatusMsg clears the transient status message.
 type clearStatusMsg struct{}
 

@@ -427,6 +427,25 @@ func TestWindowResize(t *testing.T) {
 	}
 }
 
+func TestRepoUpdateAllRefreshes(t *testing.T) {
+	m := testModel()
+	m, _ = toModel(m.Update(reposLoadedMsg([]helm.Repo{
+		{Name: "stable", URL: "https://charts.helm.sh/stable"},
+	})))
+
+	// Simulate background repo update completing
+	m, cmd := toModel(m.Update(repoUpdateAllDoneMsg{}))
+	if cmd == nil {
+		t.Fatal("repoUpdateAllDoneMsg should trigger a reload command")
+	}
+
+	// Run the reload — should refresh repos
+	m, _ = runCmd(m, cmd)
+	if len(m.Repos()) == 0 {
+		t.Error("repos should be refreshed after repo update all")
+	}
+}
+
 func TestClearStatus(t *testing.T) {
 	m := testModel()
 	m.statusMsg = "some message"
@@ -504,8 +523,8 @@ func TestBackNavigationClearsFilter(t *testing.T) {
 	}
 
 	// Select filtered repo and drill in
-	m, cmd := toModel(m.Update(tea.KeyMsg{Type: tea.KeyDown}))
-	m, cmd = toModel(m.Update(tea.KeyMsg{Type: tea.KeyEnter}))
+	m, _ = toModel(m.Update(tea.KeyMsg{Type: tea.KeyDown}))
+	m, cmd := toModel(m.Update(tea.KeyMsg{Type: tea.KeyEnter}))
 	m, _ = runCmd(m, cmd)
 
 	// Go back — filter should be cleared and all repos visible

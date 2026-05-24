@@ -20,6 +20,9 @@ type Executor interface {
 	// RepoUpdate updates the local cache for the named repo.
 	RepoUpdate(ctx context.Context, name string) error
 
+	// RepoUpdateAll updates all configured repos.
+	RepoUpdateAll(ctx context.Context) error
+
 	// SearchRepo searches for charts in a repo (pass "reponame/" for all charts in a repo).
 	SearchRepo(ctx context.Context, keyword string) ([]Chart, error)
 
@@ -55,6 +58,14 @@ func (e *RealExecutor) RepoAdd(ctx context.Context, name, url string) error {
 
 func (e *RealExecutor) RepoUpdate(ctx context.Context, name string) error {
 	_, err := runHelm(ctx, "repo", "update", name)
+	if err != nil {
+		return fmt.Errorf("running helm repo update: %w", err)
+	}
+	return nil
+}
+
+func (e *RealExecutor) RepoUpdateAll(ctx context.Context) error {
+	_, err := runHelm(ctx, "repo", "update")
 	if err != nil {
 		return fmt.Errorf("running helm repo update: %w", err)
 	}

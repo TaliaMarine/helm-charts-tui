@@ -66,6 +66,13 @@ func (m Model) loadDetail(chartName, version string) tea.Cmd {
 	}
 }
 
+func (m Model) repoUpdateAll() tea.Cmd {
+	return func() tea.Msg {
+		_ = m.helm.RepoUpdateAll(m.ctx)
+		return repoUpdateAllDoneMsg{}
+	}
+}
+
 func (m Model) addRepo(name, url string) tea.Cmd {
 	return func() tea.Msg {
 		if err := m.helm.RepoAdd(m.ctx, name, url); err != nil {

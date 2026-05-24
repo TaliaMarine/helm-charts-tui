@@ -85,6 +85,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case repoUpdateAllDoneMsg:
+		return m, tea.Batch(m.loadRepos(), m.loadChartCounts())
+
 	case clearStatusMsg:
 		m.statusMsg = ""
 		return m, nil
