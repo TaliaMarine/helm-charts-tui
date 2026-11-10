@@ -6,6 +6,7 @@ import "context"
 type MockExecutor struct {
 	RepoListFunc           func(ctx context.Context) ([]Repo, error)
 	RepoAddFunc            func(ctx context.Context, name, url string) error
+	RepoRemoveFunc         func(ctx context.Context, name string) error
 	RepoUpdateFunc         func(ctx context.Context, name string) error
 	RepoUpdateAllFunc      func(ctx context.Context) error
 	SearchRepoFunc         func(ctx context.Context, keyword string) ([]Chart, error)
@@ -23,6 +24,13 @@ func (m *MockExecutor) RepoList(ctx context.Context) ([]Repo, error) {
 func (m *MockExecutor) RepoAdd(ctx context.Context, name, url string) error {
 	if m.RepoAddFunc != nil {
 		return m.RepoAddFunc(ctx, name, url)
+	}
+	return nil
+}
+
+func (m *MockExecutor) RepoRemove(ctx context.Context, name string) error {
+	if m.RepoRemoveFunc != nil {
+		return m.RepoRemoveFunc(ctx, name)
 	}
 	return nil
 }

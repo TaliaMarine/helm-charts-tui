@@ -65,6 +65,19 @@ Repo List -> Chart List -> Chart Versions -> Chart Detail
 | `PgUp`        | Page up            |
 | `g` / `Home`  | Go to top          |
 | `G` / `End`   | Go to bottom       |
+| `Ctrl+U` / `Ctrl+D` | Half page up / down |
+| `Ctrl+B` / `Ctrl+F` | Page up / down (alias) |
+| `l` / `Right` | Same as `Enter` (drill in) |
+| `h` / `Left` / `Backspace` | Back (as `Esc`, but no exit dialog on the repo list) |
+| `r` / `F5` / `Ctrl+R` | Reload current screen's data (section 10) |
+| `R`           | Update from remote: all repos (repo list) or selected repo (other screens) |
+| `u`           | Repo list: update the highlighted repo from remote |
+| `a`           | Repo list: open the add-repo dialog |
+| `x` / `Delete` | Repo list: remove highlighted repo (confirm dialog) |
+| `s`           | Cycle sort order: repo list (default, name asc/desc, chart count), chart list (default, name asc/desc) |
+| `y`           | Copy: repo URL / chart name / YAML (detail) |
+| `Y`           | Copy: `helm repo add ...` (repo list) / `helm install RELEASE CHART --version V` |
+| Mouse wheel   | Scroll lists and the detail view |
 
 ### Filter mode (typing in the filter input)
 
@@ -87,6 +100,13 @@ Repo List -> Chart List -> Chart Versions -> Chart Detail
 ### Help overlay
 
 Any key dismisses the overlay.
+
+### Confirm-remove dialog
+
+| Key           | Action |
+|---------------|--------|
+| `y` / `Enter` | Run `helm repo remove NAME` |
+| `n` / `Esc`   | Cancel |
 
 ### Confirm-exit dialog (repo list `Esc` only)
 
@@ -175,6 +195,7 @@ All commands are executed via `exec.CommandContext` with `context.Context` for c
 | Add repo         | `helm repo add NAME URL`                           |
 | Update repo      | `helm repo update NAME`                            |
 | Update all repos | `helm repo update`                                 |
+| Remove repo      | `helm repo remove NAME`                            |
 | Search charts    | `helm search repo KEYWORD --output json`           |
 | Search versions  | `helm search repo KEYWORD --versions --output json`|
 | Show chart       | `helm show chart CHARTNAME --version VERSION`      |
@@ -199,3 +220,26 @@ All commands are executed via `exec.CommandContext` with `context.Context` for c
 - **Justfile** with recipes: `build`, `build-release`, `test`, `test-verbose`, `test-coverage`, `vet`, `lint`, `tidy`, `fmt`, `clean`, `check` (all), `run`
 - **Unit tests**: table-driven for JSON parsing and filter logic; message-driven state transition tests for TUI using `MockExecutor`
 - **Exit codes**: `0` success, `1` error, `130` interrupted (SIGINT/SIGTERM)
+
+---
+
+## 10. Refresh & Animation
+
+### Reload (`r`)
+
+Re-fetches the current screen's data without touching remotes. If the screen already has data it stays visible and the header shows a spinner ("refreshing"); otherwise the full-screen spinner is used. Success shows a "reloaded N ..." toast. Failure keeps the stale data and shows an error toast.
+
+### Update from remote (`R`, `u`)
+
+Runs `helm repo update NAME` per repo, at most 4 concurrently. The header shows a spinner plus `updating done/total` and an animated progress bar when more than one repo is updated. When all finish the current screen (and, from chart screens, the repo list and counts) is reloaded and a summary toast reports successes and failed repo names. Starting a second update while one runs is refused with an error toast.
+
+### Stale responses
+
+Responses for a screen the user has already left are ignored; going back clears any in-flight loading state.
+
+### Animations
+
+- Spinner (`MiniDot`; ASCII `Line` under `NO_COLOR`) while loading, refreshing, syncing or updating. The tick chain stops when idle.
+- Spring-animated progress bar for multi-repo updates.
+- Toasts stay 2.5s, dim for 0.5s, then clear. A newer toast is never cleared by an older timer.
+- Dialogs are drawn over the live view rather than replacing it.

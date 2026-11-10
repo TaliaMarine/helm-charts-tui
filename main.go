@@ -33,7 +33,7 @@ func main() {
 	executor := &helm.RealExecutor{}
 	m := tui.New(ctx, executor)
 
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(ctx))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		if errors.Is(err, context.Canceled) {

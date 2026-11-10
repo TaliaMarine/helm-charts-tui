@@ -33,9 +33,27 @@ type repoAddErrMsg struct {
 	err error
 }
 
-// repoUpdateAllDoneMsg signals that background repo update completed.
+// repoRemovedMsg signals a repo was removed successfully.
+type repoRemovedMsg string
+
+// repoRemoveErrMsg reports an error when removing a repo.
+type repoRemoveErrMsg struct {
+	name string
+	err  error
+}
+
+// repoUpdatedMsg reports the outcome of updating one repo (user-triggered refresh).
+type repoUpdatedMsg struct {
+	name string
+	err  error
+}
+
+// repoUpdateAllDoneMsg signals that the startup background repo update completed.
 type repoUpdateAllDoneMsg struct{}
 
-// clearStatusMsg clears the transient status message.
-type clearStatusMsg struct{}
+// toastFadeMsg dims the toast shortly before it disappears.
+type toastFadeMsg struct{ seq int }
 
+// clearStatusMsg clears the transient status message. A zero seq clears
+// unconditionally; otherwise it only clears the toast that scheduled it.
+type clearStatusMsg struct{ seq int }

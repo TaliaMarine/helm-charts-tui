@@ -17,6 +17,9 @@ type Executor interface {
 	// RepoAdd adds a new repo with the given name and URL.
 	RepoAdd(ctx context.Context, name, url string) error
 
+	// RepoRemove removes the named repo from the local configuration.
+	RepoRemove(ctx context.Context, name string) error
+
 	// RepoUpdate updates the local cache for the named repo.
 	RepoUpdate(ctx context.Context, name string) error
 
@@ -52,6 +55,14 @@ func (e *RealExecutor) RepoAdd(ctx context.Context, name, url string) error {
 	_, err := runHelm(ctx, "repo", "add", name, url)
 	if err != nil {
 		return fmt.Errorf("running helm repo add: %w", err)
+	}
+	return nil
+}
+
+func (e *RealExecutor) RepoRemove(ctx context.Context, name string) error {
+	_, err := runHelm(ctx, "repo", "remove", name)
+	if err != nil {
+		return fmt.Errorf("running helm repo remove: %w", err)
 	}
 	return nil
 }

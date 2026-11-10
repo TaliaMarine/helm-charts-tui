@@ -3,7 +3,10 @@ package tui
 import (
 	"context"
 	"strconv"
+	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -16,21 +19,31 @@ import (
 type Screen int
 
 const (
-	ScreenRepoList     Screen = iota
-	ScreenChartList    Screen = iota
-	ScreenChartVersions Screen = iota
-	ScreenChartDetail  Screen = iota
+	ScreenRepoList Screen = iota
+	ScreenChartList
+	ScreenChartVersions
+	ScreenChartDetail
 )
 
 // Mode identifies the current input mode.
 type Mode int
 
 const (
-	ModeNormal      Mode = iota
-	ModeFilter      Mode = iota
-	ModeAddRepo     Mode = iota
-	ModeConfirmExit Mode = iota
-	ModeHelp        Mode = iota
+	ModeNormal Mode = iota
+	ModeFilter
+	ModeAddRepo
+	ModeConfirmExit
+	ModeHelp
+	ModeConfirmRemove
+)
+
+// maxParallelUpdates bounds concurrent `helm repo update NAME` processes.
+const maxParallelUpdates = 4
+
+// Toast timing: visible, then dimmed, then gone (3s total, matching the spec).
+const (
+	toastVisible = 2500 * time.Millisecond
+	toastFade    = 500 * time.Millisecond
 )
 
 // Model is the Bubble Tea model for the application.
@@ -52,7 +65,7 @@ type Model struct {
 	versions    []helm.Chart
 	detail      string
 
-	// Filtered views
+	// Filtered (and sorted) views; table row i maps to filtered*[i] (repos: i-1).
 	filteredRepos    []helm.Repo
 	filteredCharts   []helm.Chart
 	filteredVersions []helm.Chart
@@ -72,15 +85,43 @@ type Model struct {
 	filterInput textinput.Model
 	filterText  string
 
+	// Sort (per list screen)
+	repoSort  int
+	chartSort int
+
 	// Add repo
-	addRepoName textinput.Model
-	addRepoURL  textinput.Model
+	addRepoName  textinput.Model
+	addRepoURL   textinput.Model
 	addRepoFocus int // 0=name, 1=url
 
+	// Remove repo confirmation
+	pendingRemove string
+
 	// Status
-	loading   bool
-	err       error
+	loading      bool // nothing to show yet: full-screen spinner
+	refreshing   bool // reloading while stale data stays visible
+	silentReload bool // next finished reload shouldn't toast (a more specific toast is showing)
+	syncing      bool // startup `helm repo update` running in the background
+	err          error
+
+	// Toast
 	statusMsg string
+	statusErr bool
+	statusDim bool
+	statusSeq int
+
+	// User-triggered repo updates
+	updating     bool
+	updateTotal  int
+	updateDone   int
+	updateFailed []string
+	updateErr    error
+	updateSem    chan struct{}
+
+	// Animation
+	spinner       spinner.Model
+	spinnerActive bool
+	progress      progress.Model
 }
 
 // New creates a new TUI model.
@@ -98,6 +139,19 @@ func New(ctx context.Context, executor helm.Executor) Model {
 	urlInput.Prompt = "URL:  "
 	urlInput.CharLimit = 200
 	urlInput.Placeholder = "https://charts.example.com"
+
+	sp := spinner.New()
+	sp.Spinner = spinner.MiniDot
+	sp.Style = spinStyle
+	if noColor {
+		sp.Spinner = spinner.Line // plain ASCII
+	}
+
+	fill := progress.WithScaledGradient("#5f5fff", "#00d787")
+	if noColor {
+		fill = progress.WithSolidFill("#ffffff")
+	}
+	pr := progress.New(progress.WithWidth(16), progress.WithoutPercentage(), fill)
 
 	return Model{
 		helm: executor,
@@ -118,15 +172,26 @@ func New(ctx context.Context, executor helm.Executor) Model {
 		addRepoURL:  urlInput,
 
 		loading: true,
+		syncing: true, // Init fires the background repo update
+
+		updateSem: make(chan struct{}, maxParallelUpdates),
+
+		spinner:       sp,
+		spinnerActive: true, // Init starts the tick chain
+		progress:      pr,
 	}
 }
 
 func newTable() table.Model {
-	t := table.New(
-		table.WithFocused(true),
-	)
-	s := table.DefaultStyles()
-	t.SetStyles(s)
+	t := table.New(table.WithFocused(true))
+	t.SetStyles(tableStyles())
+	// Free u/d/b/f for app shortcuts; keep ctrl-based paging.
+	km := table.DefaultKeyMap()
+	km.PageUp = tableKey("pgup", "ctrl+b")
+	km.PageDown = tableKey("pgdown", "ctrl+f")
+	km.HalfPageUp = tableKey("ctrl+u")
+	km.HalfPageDown = tableKey("ctrl+d")
+	t.KeyMap = km
 	return t
 }
 
@@ -136,13 +201,28 @@ func (m Model) Init() tea.Cmd {
 		m.loadRepos(),
 		m.loadChartCounts(),
 		m.repoUpdateAll(),
+		m.spinner.Tick,
 	)
+}
+
+// busy reports whether anything is in flight that the spinner should reflect.
+func (m Model) busy() bool {
+	return m.loading || m.refreshing || m.syncing || m.updating
+}
+
+// wake (re)starts the spinner tick chain if it has stopped.
+func (m *Model) wake() tea.Cmd {
+	if m.spinnerActive {
+		return nil
+	}
+	m.spinnerActive = true
+	return m.spinner.Tick
 }
 
 // contentHeight returns the available height for content after header and status bar.
 func (m Model) contentHeight() int {
-	// header (2 lines) + status bar (1 line) + margins
-	h := m.height - 4
+	// header (2 lines) + status bar (1 line)
+	h := m.height - 3
 	if h < 5 {
 		h = 5
 	}
@@ -163,10 +243,17 @@ func (m *Model) syncSizes() {
 	m.viewport.Height = h
 }
 
-func (m *Model) rebuildRepoTable() {
-	m.filteredRepos = FilterRepos(m.repos, m.filterText)
+func (m *Model) setRows(t *table.Model, cols []table.Column, rows []table.Row) {
+	cursor := t.Cursor()
+	t.SetColumns(cols)
+	t.SetRows(rows)
+	t.SetCursor(cursor) // clamps when the list shrank
+}
 
-	nameW := 20
+func (m *Model) rebuildRepoTable() {
+	m.filteredRepos = sortRepos(FilterRepos(m.repos, m.filterText), m.repoSort, m.chartCounts)
+
+	nameW := 24
 	chartsW := 8
 	urlW := m.width - nameW - chartsW - 8
 	if urlW < 20 {
@@ -180,7 +267,7 @@ func (m *Model) rebuildRepoTable() {
 	}
 
 	rows := make([]table.Row, 0, len(m.filteredRepos)+1)
-	rows = append(rows, table.Row{addRepoMarker.Render("+") + " Add new repo", "", ""})
+	rows = append(rows, table.Row{"+ Add new repo", "", ""})
 
 	for _, r := range m.filteredRepos {
 		count := "..."
@@ -192,62 +279,45 @@ func (m *Model) rebuildRepoTable() {
 		rows = append(rows, table.Row{r.Name, r.URL, count})
 	}
 
-	m.repoTable.SetColumns(cols)
-	m.repoTable.SetRows(rows)
+	m.setRows(&m.repoTable, cols, rows)
 }
 
-func (m *Model) rebuildChartTable() {
-	m.filteredCharts = FilterCharts(m.charts, m.filterText)
-
+func chartColumns(width int) []table.Column {
 	nameW := 30
 	verW := 12
 	appW := 12
-	descW := m.width - nameW - verW - appW - 10
+	descW := width - nameW - verW - appW - 10
 	if descW < 20 {
 		descW = 20
 	}
-
-	cols := []table.Column{
+	return []table.Column{
 		{Title: "Name", Width: nameW},
 		{Title: "Version", Width: verW},
 		{Title: "App Version", Width: appW},
 		{Title: "Description", Width: descW},
 	}
+}
 
-	rows := make([]table.Row, 0, len(m.filteredCharts))
-	for _, c := range m.filteredCharts {
+func chartRows(charts []helm.Chart) []table.Row {
+	rows := make([]table.Row, 0, len(charts))
+	for _, c := range charts {
 		rows = append(rows, table.Row{c.Name, c.Version, c.AppVersion, c.Description})
 	}
+	return rows
+}
 
-	m.chartTable.SetColumns(cols)
-	m.chartTable.SetRows(rows)
+func (m *Model) rebuildChartTable() {
+	m.filteredCharts = sortCharts(FilterCharts(m.charts, m.filterText), m.chartSort)
+	m.setRows(&m.chartTable, chartColumns(m.width), chartRows(m.filteredCharts))
 }
 
 func (m *Model) rebuildVersionTable() {
 	m.filteredVersions = FilterCharts(m.versions, m.filterText)
+	m.setRows(&m.versionTable, chartColumns(m.width), chartRows(m.filteredVersions))
+}
 
-	nameW := 30
-	verW := 12
-	appW := 12
-	descW := m.width - nameW - verW - appW - 10
-	if descW < 20 {
-		descW = 20
-	}
-
-	cols := []table.Column{
-		{Title: "Name", Width: nameW},
-		{Title: "Version", Width: verW},
-		{Title: "App Version", Width: appW},
-		{Title: "Description", Width: descW},
-	}
-
-	rows := make([]table.Row, 0, len(m.filteredVersions))
-	for _, c := range m.filteredVersions {
-		rows = append(rows, table.Row{c.Name, c.Version, c.AppVersion, c.Description})
-	}
-
-	m.versionTable.SetColumns(cols)
-	m.versionTable.SetRows(rows)
+func (m *Model) renderDetail() {
+	m.viewport.SetContent(renderYAML(m.detail, m.width))
 }
 
 func (m *Model) applyFilter() {
@@ -263,15 +333,17 @@ func (m *Model) applyFilter() {
 
 // Accessors for testing.
 
-func (m Model) CurrentScreen() Screen { return m.screen }
-func (m Model) CurrentMode() Mode     { return m.mode }
-func (m Model) IsLoading() bool       { return m.loading }
-func (m Model) Error() error          { return m.err }
-func (m Model) StatusMsg() string     { return m.statusMsg }
-func (m Model) FilterText() string    { return m.filterText }
+func (m Model) CurrentScreen() Screen     { return m.screen }
+func (m Model) CurrentMode() Mode         { return m.mode }
+func (m Model) IsLoading() bool           { return m.loading }
+func (m Model) IsRefreshing() bool        { return m.refreshing }
+func (m Model) IsUpdating() bool          { return m.updating }
+func (m Model) Error() error              { return m.err }
+func (m Model) StatusMsg() string         { return m.statusMsg }
+func (m Model) FilterText() string        { return m.filterText }
 func (m Model) SelectedRepo() helm.Repo   { return m.selectedRepo }
-func (m Model) SelectedChart() helm.Chart  { return m.selectedChart }
+func (m Model) SelectedChart() helm.Chart { return m.selectedChart }
 func (m Model) Repos() []helm.Repo        { return m.repos }
-func (m Model) Charts() []helm.Chart       { return m.charts }
-func (m Model) Versions() []helm.Chart     { return m.versions }
-func (m Model) Detail() string             { return m.detail }
+func (m Model) Charts() []helm.Chart      { return m.charts }
+func (m Model) Versions() []helm.Chart    { return m.versions }
+func (m Model) Detail() string            { return m.detail }
