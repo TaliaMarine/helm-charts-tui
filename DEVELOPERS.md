@@ -21,19 +21,29 @@ internal/
     commands.go                tea.Cmd factories (async helm calls)
     messages.go                Custom tea.Msg types
     keys.go                    Key binding definitions
-    styles.go                  Lipgloss styles, NO_COLOR support
+    styles.go                  Lipgloss styles/palette, NO_COLOR support
     filter.go                  List filtering logic
+    sort.go                    List sort orders
+    yaml.go                    YAML highlighting/wrapping for the detail view
+    clipboard.go               Clipboard hook (overridable in tests)
     filter_test.go             Filter unit tests
+    refresh_test.go            Reload/update/sort/copy/remove/animation-state tests
     model_test.go              State transition tests
 ```
 
 ### Design Decisions
 
-- **Single model with screen enum**: Rather than nested Bubble Tea models, there's one `Model` with a `Screen` enum (`ScreenRepoList`, `ScreenChartList`, `ScreenChartVersions`, `ScreenChartDetail`) and a `Mode` enum (`ModeNormal`, `ModeFilter`, `ModeAddRepo`, `ModeConfirmExit`, `ModeHelp`).
+- **Single model with screen enum**: Rather than nested Bubble Tea models, there's one `Model` with a `Screen` enum (`ScreenRepoList`, `ScreenChartList`, `ScreenChartVersions`, `ScreenChartDetail`) and a `Mode` enum (`ModeNormal`, `ModeFilter`, `ModeAddRepo`, `ModeConfirmExit`, `ModeConfirmRemove`, `ModeHelp`).
 - **Executor interface**: All helm CLI interactions go through `helm.Executor`. The real implementation uses `exec.CommandContext`; tests use `MockExecutor` with configurable function fields.
 - **Bubbles components**: `table.Model` for the 3 list screens, `viewport.Model` for the detail screen, `textinput.Model` for filter input and add-repo form.
 - **Chart counts**: Loaded via a single `helm search repo ""` call at startup, then grouped by repo prefix. This avoids N separate helm calls.
 - **Filter behavior**: Active filter clears on screen navigation. First ESC clears filter; second ESC navigates back.
+
+### Loading flags
+
+`loading` = nothing to show yet (full-screen spinner); `refreshing` = reloading with stale data visible; `syncing` = startup background update; `updating` = user-triggered repo update. `busy()` is true if any is set. The spinner tick chain only runs while `busy()`; call `m.wake()` and batch the returned cmd whenever you start async work. Loaded messages call `finishLoad(screen, ...)`, which ignores responses for a screen the user already left.
+
+In tests, `drain(m, cmd)` (refresh_test.go) runs a cmd tree and feeds results back, skipping spinner ticks and abandoning sleeping timers.
 
 ### State Machine
 
@@ -112,8 +122,10 @@ Direct dependencies (minimal set):
 | Package | Purpose |
 |---------|---------|
 | `charmbracelet/bubbletea` | TUI framework (model-update-view) |
-| `charmbracelet/bubbles` | UI components: table, viewport, textinput, key |
+| `charmbracelet/bubbles` | UI components: table, viewport, textinput, key, spinner, progress |
 | `charmbracelet/lipgloss` | Terminal styling |
+| `charmbracelet/x/ansi` | ANSI-aware truncate/wrap for overlays and YAML |
+| `atotto/clipboard` | System clipboard for the copy shortcuts |
 
 ## Exit Codes
 

@@ -22,7 +22,7 @@ func (m Model) loadChartCounts() tea.Cmd {
 	return func() tea.Msg {
 		charts, err := m.helm.SearchRepo(m.ctx, "")
 		if err != nil {
-			// Non-fatal: counts will just show "..."
+			// Non-fatal: counts keep their previous value (or "..." initially)
 			return chartCountsLoadedMsg(nil)
 		}
 		counts := make(map[string]int)
@@ -66,10 +66,25 @@ func (m Model) loadDetail(chartName, version string) tea.Cmd {
 	}
 }
 
+// repoUpdateAll is the silent startup sync.
 func (m Model) repoUpdateAll() tea.Cmd {
 	return func() tea.Msg {
 		_ = m.helm.RepoUpdateAll(m.ctx)
 		return repoUpdateAllDoneMsg{}
+	}
+}
+
+// updateRepo refreshes a single repo from its remote. Concurrency is bounded
+// so refreshing every repo doesn't spawn an unbounded number of helm processes.
+func (m Model) updateRepo(name string) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case m.updateSem <- struct{}{}:
+			defer func() { <-m.updateSem }()
+		case <-m.ctx.Done():
+			return repoUpdatedMsg{name: name, err: m.ctx.Err()}
+		}
+		return repoUpdatedMsg{name: name, err: m.helm.RepoUpdate(m.ctx, name)}
 	}
 }
 
@@ -85,8 +100,20 @@ func (m Model) addRepo(name, url string) tea.Cmd {
 	}
 }
 
+func (m Model) removeRepo(name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.helm.RepoRemove(m.ctx, name); err != nil {
+			return repoRemoveErrMsg{name: name, err: err}
+		}
+		return repoRemovedMsg(name)
+	}
+}
+
+func after(d time.Duration, msg tea.Msg) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg { return msg })
+}
+
+// clearStatusAfter schedules an unconditional status clear.
 func clearStatusAfter(d time.Duration) tea.Cmd {
-	return tea.Tick(d, func(_ time.Time) tea.Msg {
-		return clearStatusMsg{}
-	})
+	return after(d, clearStatusMsg{})
 }
